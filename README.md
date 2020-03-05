@@ -1,4 +1,4 @@
-# dubbo.ts
+# node-dubbo-ts
 
 Dubbo官网 [http://dubbo.apache.org](http://dubbo.apache.org)，它主要解决java服务的RPC通信问题，而`dubbo.ts`主要参考Dubbo理念，重写NODEJS端的dubbo的rpc通信。它提供一整套完整的包括从服务端到客户端的解决方案。
 
