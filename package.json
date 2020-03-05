@@ -1,0 +1,40 @@
+{
+  "name": "node-dubbo-ts",
+  "version": "1.0.1",
+  "description": "dubbo for ts",
+  "main": "dist/index.js",
+  "scripts": {
+    "server": "ts-node test/server.ts",
+    "client": "ts-node test/client.ts",
+    "build": "rm -rf dist/ && tsc -d"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "dubbo",
+    "typescript",
+    "ts",
+    "registry",
+    "zookeeper",
+    "provider",
+    "consumer",
+    "interface",
+    "client",
+    "swagger"
+  ],
+  "devDependencies": {
+    "@types/node": "^12.6.8",
+    "js-to-java": "^2.6.1",
+    "typescript": "^3.5.3"
+  },
+  "dependencies": {
+    "@evio/intersect": "^1.0.4",
+    "@nelts/utils": "^1.0.19",
+    "@types/compare-versions": "^3.0.0",
+    "@types/node-zookeeper-client": "^0.2.6",
+    "compare-versions": "^3.5.1",
+    "hessian.js": "^2.9.0",
+    "node-zookeeper-client": "^1.0.0"
+  }
+}
