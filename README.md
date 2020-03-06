@@ -191,7 +191,7 @@ type ProviderServiceChunkInitOptions = {
 
 ```ts
 import { ProviderContext, ProviderChunk, PROVIDER_CONTEXT_STATUS } from 'dubbo.ts';
-provider.on('data', async (ctx: ProviderContext, chunk: ProviderChunk) => {
+provider.on('data', async (ctx: ProviderContext, chunk: ProviderChunk, next) => {
   // 反序列化数据
   const req = ctx.req;
   // 如果chunk.interfacetarget是一个class service
@@ -200,6 +200,7 @@ provider.on('data', async (ctx: ProviderContext, chunk: ProviderChunk) => {
   const result = app[req.method](...req.parameters);
   ctx.body = result;
   ctx.status = PROVIDER_CONTEXT_STATUS.OK;
+  next();
 })
 ```
 
