@@ -10,4 +10,3 @@ perf
 npm-debug.log
 .vscode
 tsconfig.tsbuildinfo
-/dist
