@@ -37,13 +37,17 @@ export default class Connection {
   onMessage(buf: Buffer) {
     this._lastread_timestamp = Date.now();
     const ctx = new Context(this, buf);
-    Promise.resolve(ctx.decode()).then(() => {
-      if (!ctx.status) ctx.status = PROVIDER_CONTEXT_STATUS.OK;
-      if (ctx.req) this.send(ctx.encode());
-    }).catch(e => {
-      ctx.body = e.message;
-      if (!ctx.status || ctx.status === PROVIDER_CONTEXT_STATUS.OK) ctx.status = PROVIDER_CONTEXT_STATUS.SERVICE_ERROR;
-      if (ctx.req) this.send(ctx.encode());
+    ctx.on('dataHandlingEnd', () => {
+      if (!ctx.status)
+        ctx.status = PROVIDER_CONTEXT_STATUS.OK;
+      if (ctx.req)
+        this.send(ctx.encode());
+    });
+    Promise.resolve(ctx.decode()).catch(e => {
+        ctx.body = e.message;
+        if (!ctx.status || ctx.status === PROVIDER_CONTEXT_STATUS.OK)
+            ctx.status = PROVIDER_CONTEXT_STATUS.SERVICE_ERROR;
+        ctx.emit('dataHandlingEnd');
     });
   }
 

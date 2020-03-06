@@ -12,6 +12,12 @@ Dubbo官网 [http://dubbo.apache.org](http://dubbo.apache.org)，它主要解决
 
 > 注意： `dubbo.ts` 没有提供如下的注解，这里仅仅展示一个基于`@nelts/dubbo`设计的注解模型。
 
+安装方式
+
+```
+npm install node-dubbo-ts
+```
+
 ```ts
 import { provide, inject } from 'injection';
 import { rpc } from '@nelts/dubbo';

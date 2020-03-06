@@ -17,9 +17,10 @@ import {
   PROVIDER_RESPONSE_BODY_FLAG,
   getProviderServiceChunkId,
 } from '../utils';
+import { EventEmitter } from '@nelts/utils';
 const hassin = require('hessian.js');
 
-export default class Context {
+export default class Context extends EventEmitter {
   private data: Buffer;
   private conn: Connection;
   private decoded: boolean = false;
@@ -48,6 +49,7 @@ export default class Context {
     },
   };
   constructor(conn: Connection, buf: Buffer) {
+    super();
     this.conn = conn;
     this.data = buf;
   }
@@ -123,7 +125,9 @@ export default class Context {
           interfaceVersion || '0.0.0'
         );
         const chunk = this.conn.provider.getChunkById(id);
-        return this.conn.provider.emit('data', this, chunk);
+        return this.conn.provider.emit('data', this, chunk, () => {
+          this.emit('dataHandlingEnd');
+        });
       }
     }
   }
