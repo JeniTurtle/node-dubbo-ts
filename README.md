@@ -12,54 +12,16 @@ Dubbo官网 [http://dubbo.apache.org](http://dubbo.apache.org)，它主要解决
 
 > 注意： `dubbo.ts` 没有提供如下的注解，这里仅仅展示一个基于`@nelts/dubbo`设计的注解模型。
 
-安装方式
+## 安装方式
 
 ```
 npm install node-dubbo-ts
 ```
 
-```ts
-import { provide, inject } from 'injection';
-import { rpc } from '@nelts/dubbo';
-import { RPC_INPUT_SCHEMA } from '@node/com.stib.utils'; // 私有源上的包，参考时候可忽略功能
-
-@provide('User')
-@rpc.interface('com.mifa.stib.service.User')
-@rpc.version('1.0.0')
-export default class UserService {
-  @inject('wx') private wx: WX;
-  @inject('redis') private redis: ioredis.Redis;
-
-  @rpc.method
-  @rpc.middleware(OutputConsole)
-  login(req: RPC_INPUT_SCHEMA) {
-    // ...
-  }
-}
-
-async function OutputConsole(ctx, next) {
-  console.log('in middleware');
-  await next()
-}
-```
 
 ## ZooKeeper Install
 
 参考 [https://note.youdao.com/ynoteshare1/index.html?id=98a4e01e9c83f8fc5d252d5cefcc34eb&type=note](https://note.youdao.com/ynoteshare1/index.html?id=98a4e01e9c83f8fc5d252d5cefcc34eb&type=note) 或者自己安装服务端。
-
-## Preview test
-
-```bash
-$ git clone git@github.com:cevio/dubbo.ts.git
-$ cd dubbo.ts
-# 修改 test/client.ts 中 zookeeper 的地址 还有注意修改 dubbo_version 的值
-# 修改 test/server.ts 中 zookeeper 的地址 还有注意修改 dubbo_version 的值
-$ npm run server
-$ npm run client
-$ open http://127.0.0.1:9001
-```
-
-注意： dubbo_version 的值就是当前所用dubbo的版本。具体代码可以参考 `test/client.ts` 与 `test/server.ts`。
 
 ## Get started
 
@@ -68,13 +30,13 @@ $ open http://127.0.0.1:9001
 ### Install
 
 ```bash
-$ npm i dubbo.ts
+$ npm i node-dubbo-ts
 ```
 
 ### Usage
 
 ```ts
-import { Registry, Provider, Consumer } from 'dubbo.ts';
+import { Registry, Provider, Consumer } from 'node-dubbo-ts';
 ```
 
 #### Registry
@@ -312,92 +274,84 @@ const swgger = new SwaggerConsumer('subject name', registry as Registry);
 const resultTree = await swgger.get();
 ```
 
-我们来看一个基于`@nelts/dubbo`的实例，在具体微服务的service上，我们可以这样写
+我们来看一个基于`egg-dubbo`的实例，在具体微服务的service上，我们可以这样写
 
 ```ts
-import { provide, inject } from 'injection';
-import { rpc } from '@nelts/dubbo';
-import { RPC_INPUT_SCHEMA, MIN_PROGRAM_TYPE, error, RpcRequestParameter, RpcResponseParameter } from '@node/com.stib.utils';
-import WX from './wx';
-import * as ioredis from 'ioredis';
-import Relations from './relations';
-import { tableName as WxTableName } from '../tables/stib.user.wx';
+// app/dubbo/service/oauth.ts
 
-@provide('User')
-@rpc.interface('com.mifa.stib.service.UserService')
-@rpc.version('1.0.0')
-@rpc.description('用户中心服务接口')
-export default class UserService {
-  @inject('wx')
-  private wx: WX;
+import { Service, Inject } from 'typedi';
+import { RPCService, Response, Provider, Version, Description, Method, Summary, Param } from 'egg-dubbo';
+import { OAuthTokenParams, OAuthTokenResp } from '../dto/oAuth';
+import OAuthService from '@service/auth/oauth';
 
-  @inject('redis')
-  private redis: ioredis.Redis;
+@Service()
+@Provider('com.jeni.node.service.OAuthService')
+@Version('1.0.0')
+@Description('第三方授权认证服务')
+export default class OAuthRPCService extends RPCService {
+  @Inject()
+  readonly oAuthService: OAuthService;
 
-  @inject('relation')
-  private rel: Relations;
-
-  @rpc.method
-  @rpc.summay('用户统一登录')
-  @rpc.parameters(RpcRequestParameter({
-    type: 'object',
-    properties: {
-      code: {
-        type: 'string'
-      }
-    }
-  }))
-  @rpc.response(RpcResponseParameter({ type: 'string' }))
-  login(req: RPC_INPUT_SCHEMA) {
-    switch (req.headers.platform) {
-      case MIN_PROGRAM_TYPE.WX:
-        if (req.data.code) return this.wx.codeSession(req.data.code);
-        return this.wx.jsLogin(req.data, req.headers.appName);
-      case MIN_PROGRAM_TYPE.WX_SDK: return this.wx.sdkLogin(req.data.code, req.headers.appName);
-      default: throw error('不支持的登录类型');
-    }
+  @Method
+  @Summary('获取第三方授权Token')
+  @Response(OAuthTokenResp)
+  async getAccessToken(@Param params: OAuthTokenParams) {
+    const { sign, appId, appSecret, school, timestamp } = params;
+    const thirdApp = await this.oAuthService.validateOAuth({
+      sign,
+      appId,
+      appSecret,
+      school,
+      timestamp,
+    });
+    const accessToken = this.app.jwt.sign(
+      {
+        appId,
+        school,
+      },
+      {
+        expiresIn: thirdApp.tokenExpireTime || 2 * 60 * 60, // 默认有效期2小时
+      },
+    );
+    return {
+      token: this.ctx.helper.crypto.encrypt(accessToken),
+    };
   }
+}
+```
 
-  @rpc.method
-  @rpc.parameters(RpcRequestParameter())
-  @rpc.summay('获取当前用户状态')
-  async status(req: RPC_INPUT_SCHEMA) {
-    if (!req.headers.userToken) throw error('401 Not logined', 401);
-    const rid = await this.redis.get(req.headers.userToken);
-    if (!rid) throw error('401 Not logined', 401);
-    const user = await this.getUserDetailInfoByRelationId(Number(rid)).catch(e => Promise.reject(error('401 Not logined', 401)));
-    user.sex = Number(user.sex);
-    Reflect.deleteProperty(user, 'id');
-    Reflect.deleteProperty(user, 'create_time');
-    Reflect.deleteProperty(user, 'modify_time');
-    Reflect.deleteProperty(user, 'unionid');
-    return user;
-  }
+```ts
+// app/dubbo/dto/oauth.ts
 
-  @rpc.method
-  @rpc.summay('获取某个用户详细信息')
-  @rpc.parameters(RpcRequestParameter({
-    type: 'object',
-    properties: {
-      rid: {
-        type: 'integer'
-      }
-    }
-  }))
-  async getUserDetailInfo(req: RPC_INPUT_SCHEMA) {
-    return await this.getUserDetailInfoByRelationId(req.data.rid as number);
-  }
+import { IsDefined } from 'class-validator';
+import { Type } from 'class-transformer';
 
-  async getUserDetailInfoByRelationId(sid: number) {
-    const relations: {
-      f: string,
-      p: string,
-      s: string,
-    } = await this.rel.get(sid);
-    switch (relations.f) {
-      case WxTableName: return await this.wx.getUserinfo(relations.f, Number(relations.s));
-    }
-  }
+export class OAuthTokenParams {
+  @IsDefined({ message: '学校不能为空' })
+  @Type(() => Number)
+  school: number;
+
+  @IsDefined({ message: 'appId不能为空' })
+  @Type(() => String)
+  appId: string;
+
+  @IsDefined({ message: 'appSecret不能为空' })
+  @Type(() => String)
+  appSecret: string;
+
+  @IsDefined({ message: '签名不能为空' })
+  @Type(() => String)
+  sign: string;
+
+  @IsDefined({ message: '时间戳不能为空' })
+  @Type(() => Number)
+  timestamp: number;
+}
+
+export class OAuthTokenResp {
+  @IsDefined({ message: 'Token不能为空' })
+  @Type(() => String)
+  token: string;
 }
 ```
 

@@ -19,7 +19,7 @@ export default class Connection {
   private connect() {
     this.socket.on('data', buf => this.onMessage(buf));
     this.socket.on('close', () => this.provider.disconnect(this));
-    this.socket.on('error', err => this.provider.logger.fatal(err));
+    this.socket.on('error', err => this.provider.logger.error(err));
   }
 
   private initHeartbeat() {
