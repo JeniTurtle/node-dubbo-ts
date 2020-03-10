@@ -50,7 +50,6 @@ export declare type Logger = {
     error(...args: any[]): void;
     info(...args: any[]): void;
     log(...args: any[]): void;
-    fatal?(...args: any[]): void;
     warn(...args: any[]): void;
 };
 export declare type SwaggerBase64DataType = {

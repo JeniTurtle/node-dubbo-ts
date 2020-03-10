@@ -15,7 +15,7 @@ class Connection {
     connect() {
         this.socket.on('data', buf => this.onMessage(buf));
         this.socket.on('close', () => this.provider.disconnect(this));
-        this.socket.on('error', err => this.provider.logger.fatal(err));
+        this.socket.on('error', err => this.provider.logger.error(err));
     }
     initHeartbeat() {
         if (this.provider.heartbeat > 0) {

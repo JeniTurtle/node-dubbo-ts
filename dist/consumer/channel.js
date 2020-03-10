@@ -93,7 +93,7 @@ class Channel {
     }
     bindEvents() {
         this.client.on('data', (buf) => this.onMessage(buf));
-        this.client.on('error', err => this.invoker.consumer.logger.fatal(err));
+        this.client.on('error', err => this.invoker.consumer.logger.error(err));
         this.client.on('close', () => {
             this.invoker.consumer.logger.debug('[DUBBO CHANNEL CLOSE]', this.href);
             return this.uninstall();
@@ -112,7 +112,7 @@ class Channel {
                         await this.uninstall();
                         await this.install(this.service);
                     })().catch(e => {
-                        this.invoker.consumer.logger.fatal(e);
+                        this.invoker.consumer.logger.error(e);
                         return this.uninstall();
                     });
                 }
