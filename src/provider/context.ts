@@ -1,84 +1,84 @@
-import Connection from './connection';
-import * as compare from 'compare-versions';
-import { 
-  DUBBO_HEADER_LENGTH, 
-  MAGIC_HIGH, 
-  MAGIC_LOW, 
-  fromBytes4, 
-  isHeartBeat, 
-  isReplyHeart, 
-  heartBeatEncode, 
-  fromBytes8, 
-  getDubboArgumentLength, 
-  PROVIDER_CONTEXT_STATUS, 
+import Connection from "./connection";
+import * as compare from "compare-versions";
+import {
+  DUBBO_HEADER_LENGTH,
+  MAGIC_HIGH,
+  MAGIC_LOW,
+  fromBytes4,
+  isHeartBeat,
+  isReplyHeart,
+  heartBeatEncode,
+  fromBytes8,
+  getDubboArgumentLength,
+  PROVIDER_CONTEXT_STATUS,
   DUBBO_MAGIC_HEADER,
   DUBBO_DEFAULT_PAY_LOAD,
   toBytes8,
   PROVIDER_RESPONSE_BODY_FLAG,
   getProviderServiceChunkId,
-} from '../utils';
-import { EventEmitter } from '@nelts/utils';
-const hassin = require('hessian.js');
+} from "../utils";
+import { EventEmitter } from "@nelts/utils";
+const hassin = require("hessian.js");
 
 export default class Context extends EventEmitter {
-  private data: Buffer;
+  private buf: Buffer = Buffer.alloc(0);
   private conn: Connection;
-  private decoded: boolean = false;
   public status: PROVIDER_CONTEXT_STATUS;
   public body: any;
   public attachments: {
-    dubbo?: string,
+    dubbo?: string;
     [name: string]: any;
   } = {};
   public req: {
-    requestId: number,
-    dubboVersion: string,
-    interfaceName: string,
-    interfaceVersion: string,
-    method: string,
-    parameters: any[],
+    requestId: number;
+    dubboVersion: string;
+    interfaceName: string;
+    interfaceVersion: string;
+    method: string;
+    parameters: any[];
     // status?: 20 | 30 | 31 | 40 | 50 | 60 | 70 | 80 | 90 | 100,
     // body?: any,
     // flag?: 0 | 1 | 2 | 3 | 4 | 5,
     attachments: {
-      path: string,
-      interface: string,
-      version: string,
-      group?: string,
-      timeout: number,
-    },
+      path: string;
+      interface: string;
+      version: string;
+      group?: string;
+      timeout: number;
+    };
   };
-  constructor(conn: Connection, buf: Buffer) {
+  constructor(conn: Connection) {
     super();
     this.conn = conn;
-    this.data = buf;
   }
 
   get logger() {
     return this.conn.provider.logger;
   }
 
-  decode() {
-    if (this.decoded) return;
-    let buf = Buffer.concat([Buffer.alloc(0), this.data]);
-    let bufferLength = buf.length;
+  decode(data: Buffer) {
+    this.buf = Buffer.concat([this.buf, data]);
+    let bufferLength = this.buf.length;
     while (bufferLength >= DUBBO_HEADER_LENGTH) {
-      const magicHigh = buf[0];
-      const magicLow = buf[1];
+      const magicHigh = this.buf[0];
+      const magicLow = this.buf[1];
       if (magicHigh != MAGIC_HIGH || magicLow != MAGIC_LOW) {
-        const magicHighIndex = buf.indexOf(magicHigh);
-        const magicLowIndex = buf.indexOf(magicLow);
+        const magicHighIndex = this.buf.indexOf(magicHigh);
+        const magicLowIndex = this.buf.indexOf(magicLow);
         if (magicHighIndex === -1 || magicLowIndex === -1) return;
-        if (magicHighIndex !== -1 && magicLowIndex !== -1 && magicLowIndex - magicHighIndex === 1) {
-          buf = buf.slice(magicHighIndex);
-          bufferLength = buf.length;
+        if (
+          magicHighIndex !== -1 &&
+          magicLowIndex !== -1 &&
+          magicLowIndex - magicHighIndex === 1
+        ) {
+          this.buf = this.buf.slice(magicHighIndex);
+          bufferLength = this.buf.length;
         }
         return;
       }
-
       if (magicHigh === MAGIC_HIGH && magicLow === MAGIC_LOW) {
         if (bufferLength < DUBBO_HEADER_LENGTH) return;
-        const header = buf.slice(0, DUBBO_HEADER_LENGTH);
+        const header = this.buf.slice(0, DUBBO_HEADER_LENGTH);
         const bodyLengthBuff = Buffer.from([
           header[12],
           header[13],
@@ -88,18 +88,23 @@ export default class Context extends EventEmitter {
         const bodyLength = fromBytes4(bodyLengthBuff);
         if (isHeartBeat(header)) {
           const isReply = isReplyHeart(header);
-          buf = buf.slice(DUBBO_HEADER_LENGTH + bodyLength);
-          bufferLength = buf.length;
+          this.buf = this.buf.slice(DUBBO_HEADER_LENGTH + bodyLength);
+          bufferLength = this.buf.length;
           if (isReply) this.conn.send(heartBeatEncode(true));
           return;
         }
         if (DUBBO_HEADER_LENGTH + bodyLength > bufferLength) return;
-        const dataBuffer = buf.slice(0, DUBBO_HEADER_LENGTH + bodyLength);
-        buf = buf.slice(DUBBO_HEADER_LENGTH + bodyLength);
-        bufferLength = buf.length;
+        const dataBuffer = this.buf.slice(0, DUBBO_HEADER_LENGTH + bodyLength);
+        this.buf = this.buf.slice(DUBBO_HEADER_LENGTH + bodyLength);
+        bufferLength = this.buf.length;
         const requestIdBuff = dataBuffer.slice(4, 12);
         const requestId = fromBytes8(requestIdBuff);
-        const body = new hassin.DecoderV2(dataBuffer.slice(DUBBO_HEADER_LENGTH, DUBBO_HEADER_LENGTH + bodyLength));
+        const body = new hassin.DecoderV2(
+          dataBuffer.slice(
+            DUBBO_HEADER_LENGTH,
+            DUBBO_HEADER_LENGTH + bodyLength
+          )
+        );
         const dubboVersion = body.read();
         const interfaceName = body.read();
         const interfaceVersion = body.read();
@@ -118,16 +123,13 @@ export default class Context extends EventEmitter {
           parameters: args,
           attachments,
         };
-        this.decoded = true;
         const id = getProviderServiceChunkId(
           interfaceName,
-          this.req.attachments.group || '-',
-          interfaceVersion || '0.0.0'
+          this.req.attachments.group || "-",
+          interfaceVersion || "0.0.0"
         );
         const chunk = this.conn.provider.getChunkById(id);
-        return this.conn.provider.emit('data', this, chunk, () => {
-          this.emit('dataHandlingEnd');
-        });
+        return this.conn.provider.emit("data", this, chunk);
       }
     }
   }
@@ -139,7 +141,7 @@ export default class Context extends EventEmitter {
   }
 
   setRequestId(header: Buffer) {
-    const requestId= this.req.requestId;
+    const requestId = this.req.requestId;
     const buffer = toBytes8(requestId);
     header[4] = buffer[0];
     header[5] = buffer[1];
@@ -159,7 +161,9 @@ export default class Context extends EventEmitter {
     header[3] = this.status;
     this.setRequestId(header);
     if (payload > 0 && payload > DUBBO_DEFAULT_PAY_LOAD) {
-      throw new Error(`Data length too large: ${payload}, max payload: ${DUBBO_DEFAULT_PAY_LOAD}`);
+      throw new Error(
+        `Data length too large: ${payload}, max payload: ${DUBBO_DEFAULT_PAY_LOAD}`
+      );
     }
     header.writeUInt32BE(payload, 12);
     return header;
@@ -167,8 +171,9 @@ export default class Context extends EventEmitter {
 
   private isSupportAttachments(version?: string) {
     if (!version) return false;
-    if (compare(version, '2.0.10') >= 0 && compare(version, '2.6.2') <= 0) return false;
-    return compare(version, '2.0.2') >= 0;
+    if (compare(version, "2.0.10") >= 0 && compare(version, "2.6.2") <= 0)
+      return false;
+    return compare(version, "2.0.2") >= 0;
   }
 
   private encodeBody() {
@@ -177,21 +182,35 @@ export default class Context extends EventEmitter {
     const attachments = this.attachments || {};
     const attach = this.isSupportAttachments(this.conn.provider.version);
     if (this.status !== PROVIDER_CONTEXT_STATUS.OK) {
-      encoder.write(attach ? PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_WITH_EXCEPTION_WITH_ATTACHMENTS : PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_WITH_EXCEPTION);
+      encoder.write(
+        attach
+          ? PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_WITH_EXCEPTION_WITH_ATTACHMENTS
+          : PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_WITH_EXCEPTION
+      );
       encoder.write(body);
     } else {
       if (body === undefined || body === null) {
-        encoder.write(attach ? PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_NULL_VALUE_WITH_ATTACHMENTS : PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_NULL_VALUE);
+        encoder.write(
+          attach
+            ? PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_NULL_VALUE_WITH_ATTACHMENTS
+            : PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_NULL_VALUE
+        );
       } else {
-        encoder.write(attach ? PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_VALUE_WITH_ATTACHMENTS : PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_VALUE);
+        encoder.write(
+          attach
+            ? PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_VALUE_WITH_ATTACHMENTS
+            : PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_VALUE
+        );
         encoder.write(body);
       }
     }
 
     if (attach) {
-      encoder.write(Object.assign(attachments, {
-        dubbo: this.conn.provider.version,
-      }));
+      encoder.write(
+        Object.assign(attachments, {
+          dubbo: this.conn.provider.version,
+        })
+      );
     }
 
     return encoder.byteBuffer._bytes.slice(0, encoder.byteBuffer._offset);

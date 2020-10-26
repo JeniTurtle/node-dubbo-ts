@@ -1,11 +1,10 @@
 /// <reference types="node" />
-import Connection from './connection';
-import { PROVIDER_CONTEXT_STATUS } from '../utils';
-import { EventEmitter } from '@nelts/utils';
+import Connection from "./connection";
+import { PROVIDER_CONTEXT_STATUS } from "../utils";
+import { EventEmitter } from "@nelts/utils";
 export default class Context extends EventEmitter {
-    private data;
+    private buf;
     private conn;
-    private decoded;
     status: PROVIDER_CONTEXT_STATUS;
     body: any;
     attachments: {
@@ -27,9 +26,9 @@ export default class Context extends EventEmitter {
             timeout: number;
         };
     };
-    constructor(conn: Connection, buf: Buffer);
+    constructor(conn: Connection);
     get logger(): import("../utils").Logger;
-    decode(): Promise<void>;
+    decode(data: Buffer): Promise<void>;
     encode(): Buffer;
     setRequestId(header: Buffer): void;
     private encodeHead;

@@ -1,9 +1,10 @@
-import * as net from 'net';
-import Provider from './index';
-import { heartBeatEncode, PROVIDER_CONTEXT_STATUS } from '../utils';
-import Context from './context';
+import * as net from "net";
+import Provider from "./index";
+import { heartBeatEncode, PROVIDER_CONTEXT_STATUS } from "../utils";
+import Context from "./context";
 export default class Connection {
   public provider: Provider;
+  private context: Context;
   private socket: net.Socket;
   private _alive: boolean = true;
   private _heartbet_timer: NodeJS.Timer;
@@ -14,12 +15,13 @@ export default class Connection {
     this.socket = socket;
     this.connect();
     this.initHeartbeat();
+    this.context = new Context(this);
   }
 
   private connect() {
-    this.socket.on('data', buf => this.onMessage(buf));
-    this.socket.on('close', () => this.provider.disconnect(this));
-    this.socket.on('error', err => this.provider.logger.error(err));
+    this.socket.on("data", (buf) => this.onMessage(buf));
+    this.socket.on("close", () => this.provider.disconnect(this));
+    this.socket.on("error", (err) => this.provider.logger.error(err));
   }
 
   private initHeartbeat() {
@@ -28,27 +30,36 @@ export default class Connection {
         const time = Date.now();
         const readTime = time - this._lastread_timestamp;
         const writeTime = time - this._lastwrite_timestamp;
-        if (readTime > this.provider.heartbeat_timeout || writeTime > this.provider.heartbeat_timeout) return this.provider.disconnect(this);
-        if (readTime > this.provider.heartbeat || writeTime > this.provider.heartbeat) this.send(heartBeatEncode());
+        if (
+          readTime > this.provider.heartbeat_timeout ||
+          writeTime > this.provider.heartbeat_timeout
+        )
+          return this.provider.disconnect(this);
+        if (
+          readTime > this.provider.heartbeat ||
+          writeTime > this.provider.heartbeat
+        )
+          this.send(heartBeatEncode());
       }, this.provider.heartbeat);
     }
   }
 
   onMessage(buf: Buffer) {
     this._lastread_timestamp = Date.now();
-    const ctx = new Context(this, buf);
-    ctx.on('dataHandlingEnd', () => {
-      if (!ctx.status)
-        ctx.status = PROVIDER_CONTEXT_STATUS.OK;
-      if (ctx.req)
-        this.send(ctx.encode());
-    });
-    Promise.resolve(ctx.decode()).catch(e => {
-        ctx.body = e.message;
-        if (!ctx.status || ctx.status === PROVIDER_CONTEXT_STATUS.OK)
-            ctx.status = PROVIDER_CONTEXT_STATUS.SERVICE_ERROR;
-        ctx.emit('dataHandlingEnd');
-    });
+    Promise.resolve(this.context.decode(buf))
+      .then(() => {
+        this.context.status = PROVIDER_CONTEXT_STATUS.OK;
+        this.send(this.context.encode());
+      })
+      .catch((e) => {
+        this.context.body = e.message;
+        if (
+          !this.context.status ||
+          this.context.status === PROVIDER_CONTEXT_STATUS.OK
+        )
+          this.context.status = PROVIDER_CONTEXT_STATUS.SERVICE_ERROR;
+        this.send(this.context.encode());
+      });
   }
 
   send(buf: Buffer) {

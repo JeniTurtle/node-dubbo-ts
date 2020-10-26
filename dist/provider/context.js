@@ -3,41 +3,40 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const compare = require("compare-versions");
 const utils_1 = require("../utils");
 const utils_2 = require("@nelts/utils");
-const hassin = require('hessian.js');
+const hassin = require("hessian.js");
 class Context extends utils_2.EventEmitter {
-    constructor(conn, buf) {
+    constructor(conn) {
         super();
-        this.decoded = false;
+        this.buf = Buffer.alloc(0);
         this.attachments = {};
         this.conn = conn;
-        this.data = buf;
     }
     get logger() {
         return this.conn.provider.logger;
     }
-    decode() {
-        if (this.decoded)
-            return;
-        let buf = Buffer.concat([Buffer.alloc(0), this.data]);
-        let bufferLength = buf.length;
+    decode(data) {
+        this.buf = Buffer.concat([this.buf, data]);
+        let bufferLength = this.buf.length;
         while (bufferLength >= utils_1.DUBBO_HEADER_LENGTH) {
-            const magicHigh = buf[0];
-            const magicLow = buf[1];
+            const magicHigh = this.buf[0];
+            const magicLow = this.buf[1];
             if (magicHigh != utils_1.MAGIC_HIGH || magicLow != utils_1.MAGIC_LOW) {
-                const magicHighIndex = buf.indexOf(magicHigh);
-                const magicLowIndex = buf.indexOf(magicLow);
+                const magicHighIndex = this.buf.indexOf(magicHigh);
+                const magicLowIndex = this.buf.indexOf(magicLow);
                 if (magicHighIndex === -1 || magicLowIndex === -1)
                     return;
-                if (magicHighIndex !== -1 && magicLowIndex !== -1 && magicLowIndex - magicHighIndex === 1) {
-                    buf = buf.slice(magicHighIndex);
-                    bufferLength = buf.length;
+                if (magicHighIndex !== -1 &&
+                    magicLowIndex !== -1 &&
+                    magicLowIndex - magicHighIndex === 1) {
+                    this.buf = this.buf.slice(magicHighIndex);
+                    bufferLength = this.buf.length;
                 }
                 return;
             }
             if (magicHigh === utils_1.MAGIC_HIGH && magicLow === utils_1.MAGIC_LOW) {
                 if (bufferLength < utils_1.DUBBO_HEADER_LENGTH)
                     return;
-                const header = buf.slice(0, utils_1.DUBBO_HEADER_LENGTH);
+                const header = this.buf.slice(0, utils_1.DUBBO_HEADER_LENGTH);
                 const bodyLengthBuff = Buffer.from([
                     header[12],
                     header[13],
@@ -47,17 +46,17 @@ class Context extends utils_2.EventEmitter {
                 const bodyLength = utils_1.fromBytes4(bodyLengthBuff);
                 if (utils_1.isHeartBeat(header)) {
                     const isReply = utils_1.isReplyHeart(header);
-                    buf = buf.slice(utils_1.DUBBO_HEADER_LENGTH + bodyLength);
-                    bufferLength = buf.length;
+                    this.buf = this.buf.slice(utils_1.DUBBO_HEADER_LENGTH + bodyLength);
+                    bufferLength = this.buf.length;
                     if (isReply)
                         this.conn.send(utils_1.heartBeatEncode(true));
                     return;
                 }
                 if (utils_1.DUBBO_HEADER_LENGTH + bodyLength > bufferLength)
                     return;
-                const dataBuffer = buf.slice(0, utils_1.DUBBO_HEADER_LENGTH + bodyLength);
-                buf = buf.slice(utils_1.DUBBO_HEADER_LENGTH + bodyLength);
-                bufferLength = buf.length;
+                const dataBuffer = this.buf.slice(0, utils_1.DUBBO_HEADER_LENGTH + bodyLength);
+                this.buf = this.buf.slice(utils_1.DUBBO_HEADER_LENGTH + bodyLength);
+                bufferLength = this.buf.length;
                 const requestIdBuff = dataBuffer.slice(4, 12);
                 const requestId = utils_1.fromBytes8(requestIdBuff);
                 const body = new hassin.DecoderV2(dataBuffer.slice(utils_1.DUBBO_HEADER_LENGTH, utils_1.DUBBO_HEADER_LENGTH + bodyLength));
@@ -80,12 +79,9 @@ class Context extends utils_2.EventEmitter {
                     parameters: args,
                     attachments,
                 };
-                this.decoded = true;
-                const id = utils_1.getProviderServiceChunkId(interfaceName, this.req.attachments.group || '-', interfaceVersion || '0.0.0');
+                const id = utils_1.getProviderServiceChunkId(interfaceName, this.req.attachments.group || "-", interfaceVersion || "0.0.0");
                 const chunk = this.conn.provider.getChunkById(id);
-                return this.conn.provider.emit('data', this, chunk, () => {
-                    this.emit('dataHandlingEnd');
-                });
+                return this.conn.provider.emit("data", this, chunk);
             }
         }
     }
@@ -122,9 +118,9 @@ class Context extends utils_2.EventEmitter {
     isSupportAttachments(version) {
         if (!version)
             return false;
-        if (compare(version, '2.0.10') >= 0 && compare(version, '2.6.2') <= 0)
+        if (compare(version, "2.0.10") >= 0 && compare(version, "2.6.2") <= 0)
             return false;
-        return compare(version, '2.0.2') >= 0;
+        return compare(version, "2.0.2") >= 0;
     }
     encodeBody() {
         const encoder = new hassin.EncoderV2();
@@ -132,15 +128,21 @@ class Context extends utils_2.EventEmitter {
         const attachments = this.attachments || {};
         const attach = this.isSupportAttachments(this.conn.provider.version);
         if (this.status !== utils_1.PROVIDER_CONTEXT_STATUS.OK) {
-            encoder.write(attach ? utils_1.PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_WITH_EXCEPTION_WITH_ATTACHMENTS : utils_1.PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_WITH_EXCEPTION);
+            encoder.write(attach
+                ? utils_1.PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_WITH_EXCEPTION_WITH_ATTACHMENTS
+                : utils_1.PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_WITH_EXCEPTION);
             encoder.write(body);
         }
         else {
             if (body === undefined || body === null) {
-                encoder.write(attach ? utils_1.PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_NULL_VALUE_WITH_ATTACHMENTS : utils_1.PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_NULL_VALUE);
+                encoder.write(attach
+                    ? utils_1.PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_NULL_VALUE_WITH_ATTACHMENTS
+                    : utils_1.PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_NULL_VALUE);
             }
             else {
-                encoder.write(attach ? utils_1.PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_VALUE_WITH_ATTACHMENTS : utils_1.PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_VALUE);
+                encoder.write(attach
+                    ? utils_1.PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_VALUE_WITH_ATTACHMENTS
+                    : utils_1.PROVIDER_RESPONSE_BODY_FLAG.RESPONSE_VALUE);
                 encoder.write(body);
             }
         }

@@ -1,8 +1,9 @@
 /// <reference types="node" />
-import * as net from 'net';
-import Provider from './index';
+import * as net from "net";
+import Provider from "./index";
 export default class Connection {
     provider: Provider;
+    private context;
     private socket;
     private _alive;
     private _heartbet_timer;
